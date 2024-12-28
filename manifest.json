@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "网易云网盘音乐匹配",
+    "description": "网易云网盘音乐匹配，解决音乐无歌词无封面灰色问题",
+    "version": "1.0",
+    "icons": {
+        "32": "icon.png",
+        "64": "icon.png",
+        "128": "icon.png"
+    },
+    "action": {
+    },
+    "author": "newdiao",
+    "host_permissions": [
+        "*://music.163.com/*"
+    ],
+    "permissions": [
+        "storage",
+        "cookies",
+        "activeTab"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "*://music.163.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ],
+    "background": {
+        "service_worker": "background.js"
+    }
+}

@@ -1,0 +1,347 @@
+<html>
+
+<head>
+  <title>Popup</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="popup.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: black;
+      color: antiquewhite;
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      display: flex;
+    }
+
+    /* 自定义滚动条的样式 */
+    ::-webkit-scrollbar {
+      /* 滚动条宽度 */
+      width: 6px;
+    }
+
+    /* 滚动条轨道 */
+    ::-webkit-scrollbar-track {
+      /* 轨道颜色 */
+      background-color: #061c20;
+      border-radius: 6px;
+    }
+
+    /* 滚动条滑块 */
+    ::-webkit-scrollbar-thumb {
+      /* 滑块颜色 */
+      background: #888;
+      border-radius: 6px;
+    }
+
+    /* 滑块悬停效果 */
+    ::-webkit-scrollbar-thumb:hover {
+      /* 滑块悬停时颜色 */
+      background: #555;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      /* height: 100%; */
+      width: 90%;
+      margin: 0% auto;
+    }
+
+    .horizontal-container {
+      display: flex;
+      flex-direction: row;
+    }
+
+    /** 提示窗口 */
+    .notification {
+      display: none;
+      /* 初始状态下隐藏 */
+      position: fixed;
+      top: 22%;
+      right: 7%;
+      background-color: #4caf50;
+      /* 绿色背景 */
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+      margin: 0 auto;
+    }
+
+    /** 信息区域样式 */
+    #dv_profile {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-evenly;
+
+      background-color: #061c20;
+      border-radius: 10px;
+      padding: 5px;
+      align-items: center;
+      margin: 10px 10px 5px 10px;
+      font-size: 14px;
+    }
+
+    #dv_profile p {
+      margin: 3px;
+    }
+
+    #dv_avatar {
+      margin: 20px 50px 20px 40px;
+    }
+
+    #dv_user_info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: left;
+      margin: 5px 20px;
+    }
+
+    #dv_cloud_info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: left;
+      margin: 5px 20px;
+    }
+
+    #dv_progress {
+      width: 200px;
+      margin: 5px 5px;
+    }
+
+    /* 自定义进度条 */
+    progress {
+      width: 100%;
+      height: 15px;
+      appearance: none;
+    }
+
+    /* 自定义进度条的容器部分 */
+    progress::-webkit-progress-bar {
+      background-color: #e0e0e0;
+      border-radius: 10px;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 自定义进度条的值部分 */
+    progress::-webkit-progress-value {
+      background-color: #56948f;
+      border-radius: 10px;
+      transition: width 0.2s ease;
+    }
+
+    /* 自定义进度条的值部分（Firefox） */
+    progress::-moz-progress-bar {
+      background-color: #76c7c0;
+      border-radius: 10px;
+      transition: width 0.2s ease;
+    }
+
+    /* 基本按键样式 */
+    button {
+      display: inline-block;
+      padding: 5px 10px;
+      margin: 5px 5px 5px 0px;
+      /* 缩小尺寸 */
+      font-size: 14px;
+      color: #c9c9c9;
+      background-color: #0E4031;
+      /* 更换颜色 */
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background-color 0.3s, transform 0.1s, box-shadow 0.1s;
+      box-shadow: 2px 2px 0 0 #abcedf;
+      /* 添加阴影，增加立体感 */
+      position: relative;
+    }
+
+    /* 鼠标悬停效果 */
+    button:hover {
+      background-color: #186e54;
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0px #abcedf;
+    }
+
+    /* 按压效果 */
+    button:active {
+      transform: translate(2px, 2px);
+      /* 向下移动，模拟按压 */
+      box-shadow: 0px 0px 0px #abcedf;
+      /* 按压时阴影减小 */
+      background-color: #0E4031;
+    }
+
+    #dv_profile input[type="number"] {
+      width: 50px;
+    }
+
+    #dv_profile input[type="text"] {
+      width: 300px;
+    }
+
+    /* 取消数字输入框上下步进箭头 */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none !important;
+      margin: 0;
+    }
+
+    /** 歌曲表格样式 */
+    #dv_table {
+      background-color: #061c20;
+      border-radius: 10px;
+      padding: 10px;
+      margin: 5px 10px 10px 10px;
+      overflow: auto;
+      flex-grow: 1;
+    }
+
+    #tb_songs_title {
+      padding: 0px 5px 5px 5px;
+      font-size: 26px;
+    }
+
+    #tb_songs_title p {
+      margin: 0;
+      text-align: center;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    thead {
+      background-color: black;
+    }
+
+    tr {
+      background-color: #061c20;
+      height: 1em;
+    }
+
+    tr:nth-child(odd) {
+      background-color: #0c2c30;
+    }
+
+    tr:nth-child(even) {
+      background-color: #061c20;
+    }
+
+    th {
+      background-color: rgba(15, 88, 51, 0.438);
+    }
+
+    th,
+    td {
+      border: 1px solid black;
+      padding: 5px;
+      height: 100%;
+      width: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 70px;
+      font-size: small;
+    }
+
+    tr:hover {
+      background-color: #0f393f;
+    }
+
+    td:hover {
+      background-color: #134950;
+    }
+
+    /* 输入框样式 */
+    input {
+      background-color: #061c20;
+      color: antiquewhite;
+      border: 1px solid antiquewhite;
+      border-radius: 5px;
+      padding: 5px;
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <div class="notification" id="dv_notification"></div>
+
+    <div id="dv_profile" class="horizontal-container">
+      <div id="dv_avatar">
+        <img id="img_avatar" src="" alt="avatar" width="100" height="100">
+      </div>
+      <div id="dv_user_info">
+        <p id="nickname">User Name</p>
+        <p id="userId">User id</p>
+        <p id="createTime">User createTime</p>
+        <p id="lastLoginTime">User lastLoginTime</p>
+      </div>
+      <div id="dv_cloud_info">
+        <div id="dv_song_count">
+          <div class="horizontal-container">
+            <p>歌曲数量</p>
+            <p id="count">Cloud count</p>
+          </div>
+        </div>
+        <div id="dv_capacity">
+          <div class="horizontal-container">
+            <p>云盘容量</p>
+            <p id="size">Cloud size</p>
+            <p>/</p>
+            <p id="maxSize">Cloud maxsize</p>
+          </div>
+          <div id="dv_progress">
+            <progress id="capacity_progress"></progress>
+          </div>
+        </div>
+      </div>
+      <div id="dv_btns">
+        <button id="btn_profile_refresh">基本信息刷新</button>
+        <button id="btn_songs_refresh">歌曲列表刷新</button>
+
+        <br>
+        <label>匹配当前专辑</label>
+        <input id="input_albumId" type="number" alt="专辑ID">
+        <label>取消匹配专辑</label>
+        <input id="cancel_album_match" type="number" alt="取消专辑匹配">
+        <label>取消匹配单曲</label>
+        <input id="cancel_song_match" type="number" alt="取消单曲匹配" ton id="btn_songs_prev">
+
+        <br>
+        <button id="btn_songs_first">首页</button>
+        <button id="btn_songs_prev">上一页</button>
+        <input id="input_songs_page" type="number" alt="歌曲页码">
+        <button id="btn_songs_next">下一页</button>
+        <button id="btn_songs_last">尾页</button>
+
+        <br>
+        <label>歌曲搜索</label>
+        <input id="input_songs_search" type="text" alt="歌曲搜索">
+
+      </div>
+    </div>
+    <div id="dv_table">
+      <table id="tb_songs" class="table table-striped">
+        <div id="tb_songs_title">
+          <p>
+            空夢の古の美しき都のお伽を
+          </p>
+        </div>
+      </table>
+    </div>
+  </div>
+</body>
+
+</html>
