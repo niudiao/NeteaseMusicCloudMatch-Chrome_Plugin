@@ -207,14 +207,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         // 对歌曲名、歌手名、专辑名进行模糊搜索
         let searchList = songList.filter(song => {
-            return song.songName.toLowerCase().includes(search.toLowerCase()) || 
-                   song.artist.toLowerCase().includes(search.toLowerCase()) ||
-                   song.album.toLowerCase().includes(search.toLowerCase()) ||
-                   song.fileName.toLowerCase().includes(search.toLowerCase());
+            return song.songName.toLowerCase().includes(search.toLowerCase()) ||
+                song.artist.toLowerCase().includes(search.toLowerCase()) ||
+                song.album.toLowerCase().includes(search.toLowerCase()) ||
+                song.fileName.toLowerCase().includes(search.toLowerCase());
         });
         fillTable(table, searchList);
 
-    })  
+    })
 
 });
 
@@ -328,7 +328,7 @@ function fillTable(t, d) {
         td_fileSize.textContent = (item.fileSize / 1024 / 1024).toFixed(1) + 'MB';
         input_songId.value = item.songId;
         td_songName.textContent = item.songName;
-        img_picUrl.src = item.simpleSong.al !== null ? item.simpleSong.al.picUrl : '';
+        img_picUrl.src = item.simpleSong.al !== null ? item.simpleSong.al.picUrl + "?param=60y60" : '';
         // td_cover.textContent = item.cover;
         // td_coverId.textContent = item.coverId;
         // td_lyricId.textContent = item.lyricId;
