@@ -1,0 +1,2 @@
+# NeteaseMusicCloudMatch-Chrome_Plugin
+网易云网盘音乐匹配，解决音乐无歌词无封面灰色问题
