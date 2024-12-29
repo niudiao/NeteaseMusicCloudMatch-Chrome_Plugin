@@ -1,14 +1,13 @@
 
-let userInfo = {};
-let cloudInfo = {};
-let songList = [];
+let g_userInfo = {};
+let g_cloudInfo = {};
+let g_songList = [];
 
 let app = {};
 let limit = 20;
 let offset = 0;
 let page = 1;
 let originalSongId = '';
-let userId = '';
 
 
 /**
@@ -17,19 +16,25 @@ let userId = '';
 document.addEventListener('DOMContentLoaded', function () {
     app = document.getElementById('app');
 
-    // 获取用户和网盘信息并绑定
-    getUserInfo();
-    getCloudInfo();
+    if (!checkCookie(['MUSIC_U', '__csrf'])) {
+        showNotification('请先在网页端登录网易云音乐');
+        return;
+    }
+
+    // 从chrome.storage中获取用户信息
+    getUserInfo().then(userInfo => {
+        bindUserInfo(userInfo);
+    });
+    // 从chrome.storage中获取网盘信息
+    getCloudInfo().then(cloudInfo => {
+        bindCloudInfo(cloudInfo);
+    });
 
     // 创建表格
     let table = createTable();
     // 向后台请求歌曲列表
-    chrome.runtime.sendMessage({ action: "getSongList" }, function (response) {
-        // console.log('Popup script received:', response);
-        if (response) {
-            songList = response;
-            fillTable(table, getSongList(limit, offset));
-        }
+    getSongList(limit, offset).then(songList => {
+        fillTable(table, songList);
     });
 
     // 初始化歌曲页码
@@ -40,12 +45,12 @@ document.addEventListener('DOMContentLoaded', function () {
         showNotification('基本信息刷新中...');
         // 禁用按钮
         this.disabled = true;
-        chrome.runtime.sendMessage({ action: "refreshUserInfo" }, function (response) {
-            userInfo = response;
+        getUserInfo(true).then(userInfo => {
             bindUserInfo(userInfo);
-        })
-        getUserInfo();
-        getCloudInfo();
+        });
+        getCloudInfo(true).then(cloudInfo => {
+            bindCloudInfo(cloudInfo);
+        });
         // 3秒后启用按钮
         setTimeout(() => {
             this.disabled = false;
@@ -57,12 +62,8 @@ document.addEventListener('DOMContentLoaded', function () {
         showNotification('歌曲刷新中...');
         // 禁用按钮
         this.disabled = true;
-        chrome.runtime.sendMessage({ action: "refreshSongList" }, function (response) {
-            if (response) {
-                songList = response;
-                console.log('刷新歌曲列表');
-                fillTable(table, getSongList(limit, offset));
-            }
+        getSongList(limit, offset, true).then(songList => {
+            fillTable(table, songList);
         });
         // 3秒后启用按钮
         setTimeout(() => {
@@ -74,7 +75,9 @@ document.addEventListener('DOMContentLoaded', function () {
     app.querySelector('#btn_songs_first').addEventListener('click', function () {
         page = 1;
         offset = (page - 1) * limit;
-        fillTable(table, getSongList(limit, offset));
+        getSongList(limit, offset).then(songList => {
+            fillTable(table, songList);
+        });
         app.querySelector('#input_songs_page').value = page;
     });
     // 上一页
@@ -85,7 +88,9 @@ document.addEventListener('DOMContentLoaded', function () {
             page = 1;
         }
         offset = (page - 1) * limit;
-        fillTable(table, getSongList(limit, offset));
+        getSongList(limit, offset).then(songList => {
+            fillTable(table, songList);
+        });
         app.querySelector('#input_songs_page').value = page;
     });
     // 跳转页码
@@ -93,109 +98,131 @@ document.addEventListener('DOMContentLoaded', function () {
         if (e.target.value < 1) {
             showNotification('页码不能小于1');
             return;
-        } else if (e.target.value > Math.ceil(songList.length / limit)) {
-            showNotification('页码不能大于总页数: ' + Math.ceil(songList.length / limit));
-            e.target.value = Math.ceil(songList.length / limit);
+        } else if (e.target.value > Math.ceil(g_cloudInfo.count / limit)) {
+            showNotification('页码不能大于总页数: ' + Math.ceil(g_cloudInfo.count / limit));
+            e.target.value = Math.ceil(g_cloudInfo.count / limit);
         }
         offset = (e.target.value - 1) * limit;
         page = e.target.value;
-        fillTable(table, getSongList(limit, offset));
+        getSongList(limit, offset).then(songList => {
+            fillTable(table, songList);
+        });
         app.querySelector('#input_songs_page').value = page;
     });
     // 下一页
     app.querySelector('#btn_songs_next').addEventListener('click', function () {
         page++;
-        if (page > Math.ceil(songList.length / limit)) {
+        if (page > Math.ceil(g_cloudInfo.count / limit)) {
             showNotification('已经是最后一页了');
-            page = Math.ceil(songList.length / limit);
+            page = Math.ceil(g_cloudInfo.count / limit);
             return;
         }
         offset = (page - 1) * limit;
-        fillTable(table, getSongList(limit, offset));
+        getSongList(limit, offset).then(songList => {
+            fillTable(table, songList);
+        });
         app.querySelector('#input_songs_page').value = page;
     });
     // 尾页
     app.querySelector('#btn_songs_last').addEventListener('click', function () {
-        page = Math.ceil(songList.length / limit);
+        page = Math.ceil(g_cloudInfo.count / limit);
         offset = (page - 1) * limit;
-        fillTable(table, getSongList(limit, offset));
+        getSongList(limit, offset).then(songList => {
+            fillTable(table, songList);
+        });
         app.querySelector('#input_songs_page').value = page;
     });
 
     // 匹配专辑,当前页面歌曲匹配
     app.querySelector('#input_albumId').addEventListener('change', function (e) {
         let match_songs = {};
-        let songIds = [];
         // 当前页面歌曲
-        getSongList(limit, offset).forEach(song => {
-            match_songs[song.songName] = { "sid": '', "asid": '' };
-            match_songs[song.songName].sid = song.songId;
-            songIds.push(song.songId);
+        getSongList(limit, offset).then(songList => {
+            songList.forEach(song => {
+                match_songs[song.songName] = { "sid": '', "asid": '' };
+                match_songs[song.songName].sid = song.songId;
+            });
         });
         // 获取云专辑歌曲信息
         fetch(`https://music.163.com/api/album/${e.target.value}`)
             .then(response => response.json())
             .then(data => {
+                if (data.code !== 200) {
+                    showNotification('不存在该专辑ID: ' + e.target.value);
+                    return;
+                }   
                 album = data.album;
-                console.log('请确认专辑信息', album.name, album.artist.name);
+                // log 专辑信息
+                console.log("↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓");
+                console.log('专辑信息:', album.name, "\n专辑ID:", album.id, "\n歌手:", album.artist.name);
                 album.songs.forEach(song => {
-                    console.log(song.id, song.name);
+                    console.log(song.name, song.id);
                     if (!match_songs[song.name]) {
                         return;
                     }
                     match_songs[song.name].asid = song.id;
                 });
+                console.log("↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑");
 
                 Object.keys(match_songs).forEach(songName => {
                     if (match_songs[songName].asid == '') {
-                        console.log(songName, '不在该专辑中');
+                        console.log(songName, '不在该专辑中', 'X');
                     } else if (match_songs[songName].sid === match_songs[songName].asid) {
-                        console.log(songName, '已匹配', match_songs[songName].sid, match_songs[songName].asid);
-                        // matchSong(match_songs[songName].sid, match_songs[songName].asid);
+                        console.log(songName, '已匹配', match_songs[songName].sid, '=', match_songs[songName].asid);
                     } else {
-                        console.log(songName, '待匹配', match_songs[songName].sid, match_songs[songName].asid);
-                        // matchSong(match_songs[songName].sid, match_songs[songName].asid);
+                        console.log(songName, '待匹配', match_songs[songName].sid, '=>', match_songs[songName].asid);
+                        matchSong(match_songs[songName].sid, match_songs[songName].asid).then(data => {
+                            if (data.code == 200) {
+                                console.log("匹配完成：", songName, match_songs[songName].sid, "=>", match_songs[songName].asid);
+                            }
+                        });
                     }
                 })
+                showNotification('匹配完成，请刷新歌曲列表');
+                // TODO: 刷新歌曲列表
             });
-        console.log("匹配歌曲列表中", match_songs);
     });
 
     // 取消专辑匹配
     app.querySelector('#cancel_album_match').addEventListener('change', function (e) {
-        console.log('取消专辑匹配');
-        let uid = userInfo.profile.id;
+        console.log('取消专辑匹配: ', e.target.value);
         fetch(`https://music.163.com/api/album/${e.target.value}`)
             .then(response => response.json())
             .then(data => {
+                if (data.code !== 200) {
+                    showNotification('不存在该专辑ID: ' + e.target.value);
+                    return;
+                }
                 album = data.album;
-                console.log('请确认专辑信息', album.name, album.artist.name);
+                console.log("↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓");
+                console.log('专辑信息:', album.name, "\n专辑ID:", album.id, "\n歌手:", album.artist.name);
                 album.songs.forEach(song => {
-                    console.log(song.id, song.name);
-                    fetch(`https://music.163.com/api/cloud/user/song/match?userId=${uid}&songId=${song.id}&adjustSongId=0`)
-                        .then(response => response.json())
-                        .then(data => {
-                            console.log(data);
-                        })
-                        .catch(error => {
-                            console.log(error);
-                        })
+                    matchSong(song.id, 0).then(data => {
+                        if (data.code !== 200) {
+                            console.log("云盘中已不存在该歌曲: ", song.name, song.id);
+                        } else {
+                            console.log("取消匹配完成：", song.name, song.id, "=>", 0);
+                        }
+                    });
                 });
+                console.log("↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑");
+                showNotification('取消匹配完成，请刷新歌曲列表');
+                // TODO: 刷新歌曲列表
             });
     })
 
     // 取消单曲匹配
     app.querySelector('#cancel_song_match').addEventListener('change', function (e) {
-        console.log('取消单曲匹配');
-        let uid = userInfo.profile.id;
-        fetch(`https://music.163.com/api/cloud/user/song/match?userId=${uid}&songId=${e.target.value}&adjustSongId=0`)
-            .then(response => response.json())
-            .then(data => {
-                console.log(data);
-            })
-            .catch(error => {
-                console.log(error);
-            })
+        console.log('取消单曲匹配: ', e.target.value);
+        matchSong(e.target.value, 0).then(data => {
+            if (data.code !== 200) {
+                console.log("云盘中已不存在该歌曲ID: ", e.target.value);
+            } else {
+                console.log("取消匹配完成：", e.target.value, "=>", 0);
+            }
+        }); 
+        showNotification('取消匹配完成，请刷新歌曲列表');
+        // TODO: 刷新歌曲列表
     })
 
     // 歌曲搜索
@@ -206,18 +233,31 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         // 对歌曲名、歌手名、专辑名进行模糊搜索
-        let searchList = songList.filter(song => {
-            return song.songName.toLowerCase().includes(search.toLowerCase()) ||
-                song.artist.toLowerCase().includes(search.toLowerCase()) ||
-                song.album.toLowerCase().includes(search.toLowerCase()) ||
-                song.fileName.toLowerCase().includes(search.toLowerCase());
+        getSongList(g_cloudInfo.count, 0).then(songList => {
+            let searchList = songList.filter(song => {
+                return song.songName.toLowerCase().includes(search.toLowerCase()) ||
+                    song.artist.toLowerCase().includes(search.toLowerCase()) ||
+                    song.album.toLowerCase().includes(search.toLowerCase()) ||
+                    song.fileName.toLowerCase().includes(search.toLowerCase());
+            });
+            fillTable(table, searchList);
         });
-        fillTable(table, searchList);
-
     })
 
 });
 
+/**
+ * 检查Cookie是否存在
+ * @param {Array} names
+ * @returns {boolean}
+ */
+function checkCookie(names) {
+    return new Promise((resolve, reject) => {
+        chrome.cookies.getAll({ url: 'https://music.163.com' }, function (cookies) {
+            resolve(names.every(name => cookies.some(cookie => cookie.name === name)));
+        });
+    });
+}
 
 /**
  * 创建表格元素
@@ -354,14 +394,22 @@ function fillTable(t, d) {
 
         // 输入框聚焦事件
         input_songId.addEventListener('focus', e => {
-            console.log('input_songId focused:', e.target.value);
+            // console.log('input_songId focused:', e.target.value);
             originalSongId = e.target.value;
         });
 
         // 输入框改变事件
         input_songId.addEventListener('change', e => {
-            console.log('input_songId changed:', e.target.value);
-            matchSong(originalSongId, e.target.value);
+            // console.log('input_songId changed:', e.target.value);
+            matchSong(originalSongId, e.target.value).then(data => {
+                if (data.code !== 200) {
+                    console.log("云盘中已不存在该歌曲ID: ", originalSongId);
+                    showNotification('云盘中已不存在该歌曲ID: ' + originalSongId);
+                } else {
+                    console.log("修改ID完成：", originalSongId, "=>", e.target.value);
+                    showNotification('修改ID完成，请刷新歌曲列表');
+                }
+            }); 
         });
 
     });
@@ -387,21 +435,45 @@ function convertTimestampToReadableDate(timestamp) {
 
 
 /**
- * 获取用户信息
+ * 读取用户信息
  */
-function getUserInfo() {
-    chrome.runtime.sendMessage({ action: 'getUserInfo' }, response => {
-        userInfo = response;
-        bindUserInfo(userInfo);
-    })
+function getUserInfo(refresh = false) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get('userInfo', function (data) {
+            console.log('GetUserInfo', data);
+            // 判断空对象或者对象不对
+            if (
+                typeof data.userInfo !== 'object' ||
+                Object.keys(data.userInfo).length === 0 ||
+                !('profile' in data.userInfo) ||
+                refresh
+            ) {
+                requestUserInfo().then(userInfo => {
+                    saveUserInfo(userInfo);
+                    resolve(userInfo);
+                });
+            } else {
+                g_userInfo = data.userInfo;
+                resolve(data.userInfo);
+            }
+        });
+    });
 }
 
+/**
+ * 保存用户信息
+ */
+function saveUserInfo(userInfo) {
+    console.log('SaveUserInfo: ', userInfo);
+    g_userInfo = userInfo;
+    chrome.storage.local.set({ userInfo: userInfo });
+}
 
 /**
- * 获取网盘信息
+ * 请求用户信息
  */
-function getCloudInfo() {
-    fetch("https://music.163.com/api/v1/cloud/get?limit=0", {
+function requestUserInfo() {
+    return fetch("https://music.163.com/api/nuser/account/get", {
         method: 'GET',
         include: 'credentials'
     })
@@ -412,9 +484,131 @@ function getCloudInfo() {
             return response.json();
         })
         .then(data => {
-            console.log('Data cloud retrieved:', data);
-            cloudInfo = data;
-            bindCloudInfo();
+            return data;
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+        });
+}
+
+
+/**
+ * 读取网盘信息
+ */
+function getCloudInfo(refresh = false) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get('cloudInfo', function (data) {
+            console.log('GetCloudInfo', data);
+            if (
+                typeof data.cloudInfo !== 'object' ||
+                Object.keys(data.cloudInfo).length === 0 ||
+                !('maxSize' in data.cloudInfo) ||
+                refresh
+            ) {
+                requestCloudInfo().then(cloudInfo => {
+                    saveCloudInfo(cloudInfo);
+                    resolve(cloudInfo);
+                });
+            } else {
+                g_cloudInfo = data.cloudInfo;
+                resolve(data.cloudInfo);
+            }
+        });
+    });
+}
+
+/**
+ * 保存网盘信息
+ */
+function saveCloudInfo(cloudInfo) {
+    console.log('SaveCloudInfo: ', cloudInfo);
+    g_cloudInfo = cloudInfo;
+    chrome.storage.local.set({ cloudInfo: cloudInfo });
+}
+
+/** 
+ * 请求网盘信息
+ */
+function requestCloudInfo() {
+    return fetch("https://music.163.com/api/v1/cloud/get?limit=0", {
+        method: 'GET',
+        include: 'credentials'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            return data;
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+        });
+}
+
+/**
+ * 获取歌曲列表
+ * @param {number} limit
+ * @param {number} offset
+ */
+function getSongList(limit, offset, refresh = false) {
+    // 校验参数
+    if (limit === null || offset === null || limit < 0 || offset < 0) {
+        console.error('Invalid parameters:', limit, offset);
+        return;
+    }
+
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get('songList', function (data) {
+            if (
+                typeof data.songList !== 'object' ||
+                Object.keys(data.songList).length === 0 ||
+                refresh
+            ) {
+                getCloudInfo().then(cloudInfo => {
+                    saveCloudInfo(cloudInfo);
+                    bindCloudInfo(cloudInfo);
+                    requestSongList(cloudInfo.count, 0).then(data => {
+                        saveSongList(data.data);
+                        resolve(data.data.slice(offset, offset + limit));
+                    });
+                });
+            } else {
+                g_songList = data.songList;
+                resolve(data.songList.slice(offset, offset + limit));
+            }
+        });
+    });
+}
+
+/** 
+ * 保存歌曲列表
+ */
+function saveSongList(songList) {
+    console.log('SaveSongList: ', songList);
+    g_songList = songList;
+    chrome.storage.local.set({ songList: songList });
+}
+
+/** 
+ * 请求歌曲列表
+ */
+function requestSongList(limit, offset) {
+    // 从请求中获取
+    return fetch(`https://music.163.com/api/v1/cloud/get?limit=${limit}&offset=${offset}`, {
+        method: 'GET',
+        include: 'credentials'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            return data;
         })
         .catch(error => {
             console.error('There was a problem with the fetch operation:', error);
@@ -447,15 +641,13 @@ function bindUserInfo(userInfo) {
             }
         }
     });
-
-    userId = userProfile.userId;
 }
 
 
 /**
  * 网盘数据绑定
  */
-function bindCloudInfo() {
+function bindCloudInfo(cloudInfo) {
     if (!cloudInfo) {
         console.error('Invalid cloudInfo:', cloudInfo);
         return;
@@ -481,39 +673,7 @@ function bindCloudInfo() {
 }
 
 
-/**
- * 获取歌曲列表
- * @param {number} limit
- * @param {number} offset
- */
-function getSongList(limit, offset) {
-    // 校验参数
-    if (limit === null || offset === null || limit < 0 || offset < 0) {
-        console.error('Invalid parameters:', limit, offset);
-        return;
-    }
-    // 从 List songList 获取
-    return songList.slice(offset, offset + limit);
 
-    // 从请求中获取
-    // return fetch(`https://music.163.com/api/v1/cloud/get?limit=${limit}&offset=${offset}`, {
-    //     method: 'GET',
-    //     include: 'credentials'
-    // })
-    //     .then(response => {
-    //         if (!response.ok) {
-    //             throw new Error('Network response was not ok');
-    //         }
-    //         return response.json();
-    //     })
-    //     .then(data => {
-    //         console.log('Data songs retrieved:', data);
-    //         return data;
-    //     })
-    //     .catch(error => {
-    //         console.error('There was a problem with the fetch operation:', error);
-    //     });
-}
 
 /**
  * 匹配歌曲
@@ -521,16 +681,15 @@ function getSongList(limit, offset) {
  * @param {number} asid
  */
 function matchSong(sid, asid) {
-    let uid = userId;
-    console.log('matchSong', uid, sid, asid);
+    let uid = g_userInfo.profile.userId;
 
-    // 判断是否为空
-    if (!uid || !sid || !asid) {
+    // 判断是否为空和0
+    if (uid < 0 || sid < 0 || asid < 0) {
         console.error('Invalid parameters:', uid, sid, asid);
         return;
     }
 
-    fetch(`https://music.163.com/api/cloud/user/song/match?userId=${uid}&songId=${sid}&adjustSongId=${asid}`, {
+    return fetch(`https://music.163.com/api/cloud/user/song/match?userId=${uid}&songId=${sid}&adjustSongId=${asid}`, {
         method: 'GET',
         include: 'credentials'
     })
@@ -541,7 +700,7 @@ function matchSong(sid, asid) {
             return response.json();
         })
         .then(data => {
-            console.log('Data matchSong retrieved:', data);
+            return data;
         })
         .catch(error => {
             console.error('There was a problem with the fetch operation:', error);
